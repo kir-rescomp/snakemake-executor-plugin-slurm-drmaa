@@ -131,4 +131,4 @@ The end-to-end tests run Snakemake with this executor against a stand-in `drmaa`
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE).
+GNU GENERAL PUBLIC LICENSE v3. See [LICENSE](LICENSE).
