@@ -20,6 +20,7 @@ _ids = itertools.count(1000)
 class JobTemplate:
     remoteCommand = nativeSpecification = jobName = None
     outputPath = errorPath = None
+    joinFiles = False
 
 
 class Session:
@@ -52,7 +53,19 @@ class Session:
                 "code 1: slurm_submit_batch_job error (-1): Unspecified error"
             )
         jobid = str(next(_ids))
-        self._results[jobid] = subprocess.run(["bash", jt.remoteCommand]).returncode
+        # Like Slurm: the output path is a file, %j is the job ID, and a
+        # directory is not accepted (the job fails without running).
+        output = (jt.outputPath or "").lstrip(":").replace("%j", jobid)
+        if output and os.path.isdir(output):
+            self._results[jobid] = 1
+            return jobid
+        if output:
+            with open(output, "w") as fh:
+                self._results[jobid] = subprocess.run(
+                    ["bash", jt.remoteCommand], stdout=fh, stderr=subprocess.STDOUT
+                ).returncode
+        else:
+            self._results[jobid] = subprocess.run(["bash", jt.remoteCommand]).returncode
         return jobid
 
     def jobStatus(self, jobid):

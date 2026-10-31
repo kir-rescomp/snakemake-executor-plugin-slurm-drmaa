@@ -106,19 +106,25 @@ The release is read from `sbatch --version` at start-up. If it cannot be read, t
 
 When a submission fails, the error message includes the native specification that was sent. The plugin also runs `sbatch --test-only` with the same options, which validates the request without submitting it, and includes Slurm's own message. For example, a GPU partition's minimum-GPU policy appears as `QOSMinGRES` rather than `Unspecified error`. Use `--slurm-drmaa-no-diagnose` to turn this off.
 
+## Job logs and failed jobs
+
+Each job's standard output and error are written to one file, `<log dir>/<rule>/<Slurm job ID>.log`. Slurm needs a file path for job output, and does not accept a directory, so the plugin names a file for every job.
+
+When a job fails, the error message gives the Slurm job ID, the job's log file, and the `sacct` command for Slurm's record of the job, such as its exit code, elapsed time and peak memory.
+
 ## Settings
 
 | Setting | Description |
 |---|---|
 | `--slurm-drmaa-args` | Additional options appended to every job. |
-| `--slurm-drmaa-log-dir` | Directory for job stdout and stderr files. Defaults to the working directory. |
+| `--slurm-drmaa-log-dir` | Directory for job logs. Each job's output and error go to `<log dir>/<rule>/<Slurm job ID>.log`. Default: `.snakemake/slurm_drmaa_logs`. |
 | `--slurm-drmaa-gres-prefix` | GRES type prefix: `gres/`, `gres:` or `none`. Detected from `sbatch --version` by default. |
 | `--slurm-drmaa-no-diagnose` | Do not run `sbatch --test-only` after a failed submission. |
 
 ## Limitations
 
 - Only options in the `slurm-drmaa` subset are available. Others can be passed through `slurm_extra` if `slurm-drmaa` supports them; unsupported options are reported as `Unsupported option`.
-- Job status comes from DRMAA, which reports success or failure but not Slurm's reason for a failure. Check the job's log files, or `sacct -j <jobid>`.
+- Job status comes from DRMAA, which reports success or failure but not Slurm's reason for a failure. The error message for a failed job points to its log file and to `sacct`.
 
 ## Testing
 
@@ -131,4 +137,4 @@ The end-to-end tests run Snakemake with this executor against a stand-in `drmaa`
 
 ## Licence
 
-GNU GENERAL PUBLIC LICENSE v3. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

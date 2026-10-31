@@ -139,3 +139,41 @@ def test_undetectable_release_warns_and_uses_default(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "Could not determine the Slurm release" in result.stderr
     assert any(s.endswith("--gres=gres/gpu:1") for s in recorded_specs(tmp_path))
+
+
+def test_job_logs_are_files_and_failures_point_to_them(tmp_path):
+    (tmp_path / "Snakefile").write_text(
+        'rule fails:\n    output: "x"\n'
+        '    shell: "echo marker-from-job; exit 3"\n'
+    )
+    env = dict(os.environ, PYTHONPATH=str(FAKE_DRMAA),
+               FAKE_DRMAA_RECORD=str(tmp_path / "specs.txt"))
+    result = subprocess.run(
+        [sys.executable, "-m", "snakemake", "--executor", "slurm-drmaa", "--jobs", "1",
+         "--slurm-drmaa-log-dir", "logs"],
+        cwd=tmp_path, env=env, capture_output=True, text=True, timeout=300,
+    )
+    assert result.returncode != 0
+    logs = list((tmp_path / "logs" / "fails").glob("*.log"))
+    assert len(logs) == 1, result.stderr
+    assert "marker-from-job" in logs[0].read_text()
+    jobid = logs[0].stem
+    assert f"Slurm job {jobid} failed." in result.stderr
+    assert f"Job log: {logs[0]}" in result.stderr
+    assert f"sacct -j {jobid}" in result.stderr
+
+
+def test_default_log_dir(tmp_path):
+    result = run_snakemake_without_log_dir(tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert list((tmp_path / ".snakemake" / "slurm_drmaa_logs" / "cpu").glob("*.log"))
+
+
+def run_snakemake_without_log_dir(workdir: Path):
+    (workdir / "Snakefile").write_text(SNAKEFILE)
+    env = dict(os.environ, PYTHONPATH=str(FAKE_DRMAA),
+               FAKE_DRMAA_RECORD=str(workdir / "specs.txt"))
+    return subprocess.run(
+        [sys.executable, "-m", "snakemake", "--executor", "slurm-drmaa", "--jobs", "2"],
+        cwd=workdir, env=env, capture_output=True, text=True, timeout=300,
+    )

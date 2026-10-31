@@ -31,6 +31,9 @@ from .native_spec import (
 )
 
 
+DEFAULT_LOG_DIR = ".snakemake/slurm_drmaa_logs"
+
+
 @dataclass
 class ExecutorSettings(ExecutorSettingsBase):
     args: Optional[str] = field(
@@ -45,9 +48,9 @@ class ExecutorSettings(ExecutorSettingsBase):
     log_dir: Optional[Path] = field(
         default=None,
         metadata={
-            "help": "Directory for the stdout and stderr files of DRMAA jobs. "
-            "Relative paths are taken from the invocation directory. If not "
-            "given, the files are written to the current working directory."
+            "help": "Directory for job logs. Each job's standard output and error "
+            "are written to <log dir>/<rule>/<Slurm job ID>.log. Relative paths "
+            f"are taken from the invocation directory. Default: {DEFAULT_LOG_DIR}."
         },
     )
     gres_prefix: Optional[str] = field(
@@ -89,7 +92,9 @@ class Executor(RemoteExecutor):
         self.session = drmaa.Session()
         settings = self.workflow.executor_settings
         self.extra_args = settings.args
-        self.drmaa_log_dir = settings.log_dir
+        # Slurm writes job output to a file path and does not accept a
+        # directory, so each job gets its own file inside this directory.
+        self.log_dir = Path(settings.log_dir or DEFAULT_LOG_DIR).resolve()
         self.diagnose = not settings.no_diagnose
         self.suspended_msg = set()
         self.warned_rules = set()
@@ -120,19 +125,21 @@ class Executor(RemoteExecutor):
 
         jobscript = self.get_jobscript(job)
         self.write_jobscript(job, jobscript)
-        if self.drmaa_log_dir:
-            os.makedirs(self.drmaa_log_dir, exist_ok=True)
+        rule_log_dir = self.log_dir / job.name
+        rule_log_dir.mkdir(parents=True, exist_ok=True)
+        # Slurm replaces %j with the job ID when it opens the file.
+        log_pattern = str(rule_log_dir / "%j.log")
 
         job_info = SubmittedJobInfo(job, aux={"jobscript": jobscript})
         jt = self.session.createJobTemplate()
         try:
             jt.remoteCommand = jobscript
             jt.nativeSpecification = native_spec
-            if self.drmaa_log_dir:
-                jt.outputPath = f":{self.drmaa_log_dir}"
-                jt.errorPath = f":{self.drmaa_log_dir}"
+            jt.outputPath = f":{log_pattern}"
+            jt.joinFiles = True
             jt.jobName = os.path.basename(jobscript)
             job_info.external_jobid = self.session.runJob(jt)
+            job_info.aux["log"] = log_pattern.replace("%j", str(job_info.external_jobid))
         except drmaa.errors.DrmaaException as e:
             msg = (
                 f"Error submitting job (DRMAA error {e}).\n"
@@ -149,7 +156,7 @@ class Executor(RemoteExecutor):
 
         self.logger.info(
             f"Submitted DRMAA job {job.jobid} with external jobid "
-            f"{job_info.external_jobid}."
+            f"{job_info.external_jobid} (log: {job_info.aux['log']})."
         )
         self.logger.debug(f"Native specification: {native_spec}")
         self.report_job_submission(job_info)
@@ -241,7 +248,7 @@ class Executor(RemoteExecutor):
                     self.report_job_success(active_job)
                 elif retval == drmaa.JobState.FAILED:
                     os.remove(jobscript)
-                    self.report_job_error(active_job)
+                    self.report_job_error(active_job, msg=self._failure_message(active_job))
                 else:
                     yield active_job
                     if retval == drmaa.JobState.USER_SUSPENDED:
@@ -250,6 +257,16 @@ class Executor(RemoteExecutor):
                         self._handle_suspended(active_job, "system")
                     else:
                         self.suspended_msg.discard(active_job.job.jobid)
+
+    def _failure_message(self, job_info: SubmittedJobInfo) -> str:
+        jobid = job_info.external_jobid
+        # Snakemake appends its own sentence directly after the message.
+        return (
+            f"Slurm job {jobid} failed.\n"
+            f"Job log: {job_info.aux.get('log', 'unknown')}\n"
+            f"Slurm's record of the job: sacct -j {jobid} "
+            "--format=JobID,State,ExitCode,Elapsed,MaxRSS,NodeList\n"
+        )
 
     def _handle_suspended(self, active_job: SubmittedJobInfo, by: str):
         if active_job.job.jobid not in self.suspended_msg:
