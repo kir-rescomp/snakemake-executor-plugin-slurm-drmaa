@@ -8,21 +8,22 @@ This plugin is a fork of [snakemake-executor-plugin-drmaa](https://github.com/sn
 
 The upstream DRMAA plugin is scheduler-neutral. It passes one hand-written native specification, given with `--drmaa-args`, to every job. This has three consequences on Slurm:
 
+- **GPU submission fails on Slurm 21.08 and later.** `slurm-drmaa` accepts only `--gres` for GPUs and copies its value into the job request unchanged. `sbatch` adds a type prefix to each entry first; without it, Slurm rejects the request or does not count it as a GPU. DRMAA reports this only as `Unspecified error` or `Invalid Trackable RESource (TRES) specification`. This is [slurm-drmaa issue #68](https://github.com/natefoo/slurm-drmaa/issues/68).
 - **Resource names are not interpreted.** Rules must expose whatever names the specification string references, and a missing name fails the submission.
 - **Options cannot be omitted per rule.** A GPU option in the shared string applies to every job, so CPU rules need placeholder values.
-- **GPU submission fails on Slurm 21.08 and later.** `slurm-drmaa` accepts only `--gres` for GPUs and copies its value into the job request unchanged. `sbatch` adds a type prefix to each entry first; without it, Slurm rejects the request or does not count it as a GPU. DRMAA reports this only as `Unspecified error` or `Invalid Trackable RESource (TRES) specification`. This is [slurm-drmaa issue #68](https://github.com/natefoo/slurm-drmaa/issues/68).
 
 This plugin builds the options for each job separately, includes an option only when its resource is set, and writes GPU requests in the form Slurm recognises.
 
 ## Installation
 
-```bash
-pip install git+https://github.com/kir-rescomp/snakemake-executor-plugin-slurm-drmaa
-```
 
 The plugin requires the `slurm-drmaa` library. Set `DRMAA_LIBRARY_PATH` to its location, for example `/usr/lib64/libdrmaa.so`. At start-up the plugin checks that the loaded DRMAA implementation is the Slurm one.
 
 It installs alongside the upstream `drmaa` executor without conflict.
+
+```bash
+pip install git+https://github.com/kir-rescomp/snakemake-executor-plugin-slurm-drmaa
+```
 
 ## Usage
 
@@ -47,7 +48,7 @@ rule segment:
 On Slurm 23.11 or later, this rule is submitted with:
 
 ```
---account=gpu_kir.prj --partition=gpu_interactive --time=04:00:00 --mem=96000 --cpus-per-task=16 --gres=gres/gpu:1
+--account=Slurm_account --partition=gpu_interactive --time=04:00:00 --mem=96000 --cpus-per-task=16 --gres=gres/gpu:1
 ```
 
 ## Resources
@@ -78,13 +79,12 @@ If a rule sets `account`, `partition` or `time` without the corresponding name a
 
 ## GPU requests
 
-Request GPUs with either the `gpu` resource (with an optional `gpu_model`) or a `gpu` entry in `gres`, not both.
+Request GPUs with either the `gpu` resource (with an optional `gpu_model`) or a `gpu` entry in `gres`, **not** both.
 
 The plugin adds to every `--gres` entry the type prefix that `sbatch` itself adds in the cluster's Slurm release:
 
 | Slurm release | Prefix | Example |
 |---|---|---|
-| 20.11 and earlier | none | `--gres=gpu:1` |
 | 21.08 to 23.02 | `gres:` | `--gres=gres:gpu:1` |
 | 23.11 and later | `gres/` | `--gres=gres/gpu:1` |
 
@@ -137,4 +137,4 @@ The end-to-end tests run Snakemake with this executor against a stand-in `drmaa`
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE).
+GNU General Public License v3.0. See [LICENSE](LICENSE).
