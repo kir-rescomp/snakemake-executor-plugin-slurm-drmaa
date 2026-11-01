@@ -3,12 +3,11 @@ name = "snakemake-executor-plugin-slurm-drmaa"
 version = "0.1.0"
 description = "A Snakemake executor plugin that submits jobs to Slurm through slurm-drmaa, using the resource names of the Slurm executor plugin."
 readme = "README.md"
-license = "MIT"
+license = "GNU General Public License v3.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 authors = [
-    { name = "Dinindu Senanayake" },
-    { name = "Johannes Koester", email = "johannes.koester@uni-due.de" },
+    { name = "Dinindu Senanayake", email = "dini.senanayake@kennedy.ox.ac.uk" },
 ]
 keywords = ["snakemake", "plugin", "executor", "cluster", "drmaa", "slurm"]
 dependencies = [
